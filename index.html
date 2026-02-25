@@ -5,14 +5,14 @@
 <title>Grass Sandbox</title>
 <style>
 body { margin: 0; overflow: hidden; }
-canvas { display: block; }
 </style>
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
+<script type="module">
 
-<script>
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/PointerLockControls.js';
+
 let scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
@@ -21,45 +21,26 @@ let renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Light
 let light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(50,100,50);
 scene.add(light);
 
-// Controls
-let controls = new THREE.PointerLockControls(camera, document.body);
+let controls = new PointerLockControls(camera, document.body);
 document.body.addEventListener("click", () => controls.lock());
 scene.add(controls.getObject());
 
-// Movement
 let velocity = new THREE.Vector3();
-let direction = new THREE.Vector3();
-let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-let canJump = false;
 let gravity = 20;
+let canJump = false;
 let playerHeight = 2;
 
-document.addEventListener("keydown", (e) => {
-    switch(e.code){
-        case "KeyW": moveForward = true; break;
-        case "KeyS": moveBackward = true; break;
-        case "KeyA": moveLeft = true; break;
-        case "KeyD": moveRight = true; break;
-        case "Space":
-            if(canJump){ velocity.y += 10; canJump = false; }
-            break;
-    }
-});
-document.addEventListener("keyup", (e) => {
-    switch(e.code){
-        case "KeyW": moveForward = false; break;
-        case "KeyS": moveBackward = false; break;
-        case "KeyA": moveLeft = false; break;
-        case "KeyD": moveRight = false; break;
+document.addEventListener("keydown", (e)=>{
+    if(e.code === "Space" && canJump){
+        velocity.y = 10;
+        canJump = false;
     }
 });
 
-// Smooth Terrain
 let terrainSize = 100;
 let terrainSegments = 128;
 
@@ -78,46 +59,6 @@ let material = new THREE.MeshStandardMaterial({ color: 0x228B22 });
 let terrain = new THREE.Mesh(geometry, material);
 scene.add(terrain);
 
-// Grass lumps (place/break cubes)
-let grassBlocks = [];
-let blockGeo = new THREE.BoxGeometry(1,1,1);
-let blockMat = new THREE.MeshStandardMaterial({ color: 0x2ecc40 });
-
-let raycaster = new THREE.Raycaster();
-let mouse = new THREE.Vector2();
-
-// Break / Place
-window.addEventListener("mousedown", (event)=>{
-    raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-    let intersects = raycaster.intersectObjects([terrain, ...grassBlocks]);
-    
-    if(intersects.length > 0){
-        let hit = intersects[0];
-        
-        if(event.button === 0){ // break
-            if(grassBlocks.includes(hit.object)){
-                scene.remove(hit.object);
-                grassBlocks.splice(grassBlocks.indexOf(hit.object),1);
-            }
-        }
-        
-        if(event.button === 2){ // place
-            let pos = hit.point.clone().add(hit.face.normal);
-            pos.x = Math.round(pos.x);
-            pos.y = Math.round(pos.y);
-            pos.z = Math.round(pos.z);
-            
-            let block = new THREE.Mesh(blockGeo, blockMat);
-            block.position.copy(pos);
-            scene.add(block);
-            grassBlocks.push(block);
-        }
-    }
-});
-
-window.addEventListener("contextmenu", e=>e.preventDefault());
-
-// Collision & gravity
 function getHeightAt(x,z){
     return Math.sin(x*0.1)*2 + Math.cos(z*0.1)*2;
 }
@@ -126,38 +67,24 @@ let prevTime = performance.now();
 
 function animate(){
     requestAnimationFrame(animate);
-    
+
     let time = performance.now();
     let delta = (time - prevTime)/1000;
-    
+
     velocity.y -= gravity * delta;
-    
-    direction.z = Number(moveForward) - Number(moveBackward);
-    direction.x = Number(moveRight) - Number(moveLeft);
-    direction.normalize();
-    
-    if(moveForward || moveBackward) velocity.z -= direction.z * 50 * delta;
-    if(moveLeft || moveRight) velocity.x -= direction.x * 50 * delta;
-    
-    controls.moveRight(-velocity.x * delta);
-    controls.moveForward(-velocity.z * delta);
-    
     controls.getObject().position.y += velocity.y * delta;
-    
+
     let groundHeight = getHeightAt(
         controls.getObject().position.x,
         controls.getObject().position.z
     ) + playerHeight;
-    
+
     if(controls.getObject().position.y < groundHeight){
         velocity.y = 0;
         controls.getObject().position.y = groundHeight;
         canJump = true;
     }
-    
-    velocity.x -= velocity.x * 10 * delta;
-    velocity.z -= velocity.z * 10 * delta;
-    
+
     prevTime = time;
     renderer.render(scene, camera);
 }
