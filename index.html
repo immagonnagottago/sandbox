@@ -5,9 +5,11 @@
 <title>Grass Sandbox</title>
 <style>
 body { margin: 0; overflow: hidden; }
+canvas { display: block; }
 </style>
 </head>
 <body>
+
 <script type="module">
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -17,7 +19,7 @@ let scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-let renderer = new THREE.WebGLRenderer();
+let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -29,22 +31,44 @@ let controls = new PointerLockControls(camera, document.body);
 document.body.addEventListener("click", () => controls.lock());
 scene.add(controls.getObject());
 
+controls.getObject().position.y = 5;
+
 let velocity = new THREE.Vector3();
-let gravity = 20;
+let direction = new THREE.Vector3();
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 let canJump = false;
+let gravity = 20;
 let playerHeight = 2;
 
 document.addEventListener("keydown", (e)=>{
-    if(e.code === "Space" && canJump){
-        velocity.y = 10;
-        canJump = false;
+    switch(e.code){
+        case "KeyW": moveForward = true; break;
+        case "KeyS": moveBackward = true; break;
+        case "KeyA": moveLeft = true; break;
+        case "KeyD": moveRight = true; break;
+        case "Space":
+            if(canJump){
+                velocity.y = 10;
+                canJump = false;
+            }
+            break;
     }
 });
 
-let terrainSize = 100;
-let terrainSegments = 128;
+document.addEventListener("keyup", (e)=>{
+    switch(e.code){
+        case "KeyW": moveForward = false; break;
+        case "KeyS": moveBackward = false; break;
+        case "KeyA": moveLeft = false; break;
+        case "KeyD": moveRight = false; break;
+    }
+});
 
-let geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainSegments, terrainSegments);
+// Smooth terrain
+let size = 100;
+let segments = 128;
+
+let geometry = new THREE.PlaneGeometry(size, size, segments, segments);
 geometry.rotateX(-Math.PI/2);
 
 for(let i=0;i<geometry.attributes.position.count;i++){
@@ -72,6 +96,17 @@ function animate(){
     let delta = (time - prevTime)/1000;
 
     velocity.y -= gravity * delta;
+
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
+    direction.normalize();
+
+    if(moveForward || moveBackward) velocity.z -= direction.z * 50 * delta;
+    if(moveLeft || moveRight) velocity.x -= direction.x * 50 * delta;
+
+    controls.moveRight(-velocity.x * delta);
+    controls.moveForward(-velocity.z * delta);
+
     controls.getObject().position.y += velocity.y * delta;
 
     let groundHeight = getHeightAt(
@@ -85,11 +120,16 @@ function animate(){
         canJump = true;
     }
 
+    velocity.x -= velocity.x * 10 * delta;
+    velocity.z -= velocity.z * 10 * delta;
+
     prevTime = time;
     renderer.render(scene, camera);
 }
+
 animate();
 
 </script>
+
 </body>
 </html>
