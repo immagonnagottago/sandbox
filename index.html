@@ -15,30 +15,35 @@ canvas { display: block; }
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/PointerLockControls.js';
 
-let scene = new THREE.Scene();
+// Scene
+const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-let renderer = new THREE.WebGLRenderer({ antialias: true });
+// Camera
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-let light = new THREE.DirectionalLight(0xffffff, 1);
+// Light
+const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(50,100,50);
 scene.add(light);
 
-let controls = new PointerLockControls(camera, document.body);
-document.body.addEventListener("click", () => controls.lock());
+// Controls
+const controls = new PointerLockControls(camera, document.body);
+document.body.addEventListener("click", ()=>controls.lock());
 scene.add(controls.getObject());
-
 controls.getObject().position.y = 5;
 
+// Movement
 let velocity = new THREE.Vector3();
-let direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 let canJump = false;
-let gravity = 20;
-let playerHeight = 2;
+const gravity = 20;
+const playerHeight = 2;
 
 document.addEventListener("keydown", (e)=>{
     switch(e.code){
@@ -47,14 +52,10 @@ document.addEventListener("keydown", (e)=>{
         case "KeyA": moveLeft = true; break;
         case "KeyD": moveRight = true; break;
         case "Space":
-            if(canJump){
-                velocity.y = 10;
-                canJump = false;
-            }
+            if(canJump){ velocity.y = 10; canJump = false; }
             break;
     }
 });
-
 document.addEventListener("keyup", (e)=>{
     switch(e.code){
         case "KeyW": moveForward = false; break;
@@ -64,69 +65,94 @@ document.addEventListener("keyup", (e)=>{
     }
 });
 
-// Smooth terrain
-let size = 100;
-let segments = 128;
+// Terrain
+const terrainSize = 100;
+const terrainSegments = 128;
+const terrainGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainSegments, terrainSegments);
+terrainGeo.rotateX(-Math.PI/2);
 
-let geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-geometry.rotateX(-Math.PI/2);
-
-for(let i=0;i<geometry.attributes.position.count;i++){
-    let x = geometry.attributes.position.getX(i);
-    let z = geometry.attributes.position.getZ(i);
+for(let i=0;i<terrainGeo.attributes.position.count;i++){
+    let x = terrainGeo.attributes.position.getX(i);
+    let z = terrainGeo.attributes.position.getZ(i);
     let y = Math.sin(x*0.1)*2 + Math.cos(z*0.1)*2;
-    geometry.attributes.position.setY(i, y);
+    terrainGeo.attributes.position.setY(i, y);
 }
-geometry.computeVertexNormals();
+terrainGeo.computeVertexNormals();
 
-let material = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-let terrain = new THREE.Mesh(geometry, material);
+const terrainMat = new THREE.MeshStandardMaterial({color:0x228B22});
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
 scene.add(terrain);
 
-function getHeightAt(x,z){
-    return Math.sin(x*0.1)*2 + Math.cos(z*0.1)*2;
-}
+// Grass blocks
+const grassBlocks = [];
+const blockGeo = new THREE.BoxGeometry(1,1,1);
+const blockMat = new THREE.MeshStandardMaterial({color:0x2ecc40});
+const raycaster = new THREE.Raycaster();
 
+// Place / break blocks
+window.addEventListener("mousedown",(event)=>{
+    raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+    const intersects = raycaster.intersectObjects([terrain, ...grassBlocks]);
+    if(intersects.length > 0){
+        const hit = intersects[0];
+        if(event.button===0){ // break
+            if(grassBlocks.includes(hit.object)){
+                scene.remove(hit.object);
+                grassBlocks.splice(grassBlocks.indexOf(hit.object),1);
+            }
+        }
+        if(event.button===2){ // place
+            const pos = hit.point.clone().add(hit.face.normal);
+            pos.x = Math.round(pos.x);
+            pos.y = Math.round(pos.y);
+            pos.z = Math.round(pos.z);
+            const block = new THREE.Mesh(blockGeo, blockMat);
+            block.position.copy(pos);
+            scene.add(block);
+            grassBlocks.push(block);
+        }
+    }
+});
+window.addEventListener("contextmenu", e=>e.preventDefault());
+
+// Terrain height
+function getHeightAt(x,z){ return Math.sin(x*0.1)*2 + Math.cos(z*0.1)*2; }
+
+// Animation
 let prevTime = performance.now();
-
 function animate(){
     requestAnimationFrame(animate);
 
-    let time = performance.now();
-    let delta = (time - prevTime)/1000;
+    const time = performance.now();
+    const delta = (time - prevTime)/1000;
 
-    velocity.y -= gravity * delta;
+    velocity.y -= gravity*delta;
 
-    direction.z = Number(moveForward) - Number(moveBackward);
-    direction.x = Number(moveRight) - Number(moveLeft);
+    let direction = new THREE.Vector3();
+    direction.z = Number(moveForward)-Number(moveBackward);
+    direction.x = Number(moveRight)-Number(moveLeft);
     direction.normalize();
 
-    if(moveForward || moveBackward) velocity.z -= direction.z * 50 * delta;
-    if(moveLeft || moveRight) velocity.x -= direction.x * 50 * delta;
+    if(moveForward || moveBackward) velocity.z -= direction.z*50*delta;
+    if(moveLeft || moveRight) velocity.x -= direction.x*50*delta;
 
-    controls.moveRight(-velocity.x * delta);
-    controls.moveForward(-velocity.z * delta);
+    controls.moveRight(-velocity.x*delta);
+    controls.moveForward(-velocity.z*delta);
 
-    controls.getObject().position.y += velocity.y * delta;
-
-    let groundHeight = getHeightAt(
-        controls.getObject().position.x,
-        controls.getObject().position.z
-    ) + playerHeight;
-
+    controls.getObject().position.y += velocity.y*delta;
+    const groundHeight = getHeightAt(controls.getObject().position.x, controls.getObject().position.z)+playerHeight;
     if(controls.getObject().position.y < groundHeight){
-        velocity.y = 0;
-        controls.getObject().position.y = groundHeight;
-        canJump = true;
+        velocity.y=0;
+        controls.getObject().position.y=groundHeight;
+        canJump=true;
     }
 
-    velocity.x -= velocity.x * 10 * delta;
-    velocity.z -= velocity.z * 10 * delta;
+    velocity.x -= velocity.x*10*delta;
+    velocity.z -= velocity.z*10*delta;
 
-    prevTime = time;
-    renderer.render(scene, camera);
+    prevTime=time;
+    renderer.render(scene,camera);
 }
-
 animate();
 
 </script>
